@@ -65,17 +65,21 @@ app.get("/callback", async (req, res) => {
   const code = req.query.code;
 
   try {
-    const tokenRes = await axios.post(
-      "https://oauth2.googleapis.com/token",
-      {
-        code,
-        client_id: process.env.CLIENT_ID,
-        client_secret: process.env.CLIENT_SECRET,
-        redirect_uri: process.env.REDIRECT_URI,
-        grant_type: "authorization_code"
-      }
-    );
-
+const tokenRes = await axios.post(
+  "https://oauth2.googleapis.com/token",
+  new URLSearchParams({
+    code,
+    client_id: process.env.CLIENT_ID,
+    client_secret: process.env.CLIENT_SECRET,
+    redirect_uri: process.env.REDIRECT_URI,
+    grant_type: "authorization_code"
+  }),
+  {
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded"
+    }
+  }
+);
     const { access_token, refresh_token } = tokenRes.data;
 
     req.session.tokens = { access_token, refresh_token };
