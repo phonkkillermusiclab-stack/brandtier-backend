@@ -119,9 +119,13 @@ const tokenRes = await axios.post(
     res.redirect(process.env.FRONTEND_URL + "/?connected=1");
 
   } catch (err) {
-    console.log(err.response?.data || err.message);
-    res.send("OAuth Error");
-  }
+  console.log("OAUTH FAILED:", err.response?.data || err.message);
+
+  return res.status(500).json({
+    message: "OAuth failed",
+    error: err.response?.data || err.message
+  });
+}
 });
 
 // --------------------
