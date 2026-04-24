@@ -7,15 +7,22 @@ const fs = require("fs");
 
 const app = express();
 
+// --------------------
+// CONFIG
+// --------------------
+const PORT = process.env.PORT || 3000;
+
+// CORS (frontend controlled via env)
 app.use(cors({
-  origin: true,
+  origin: process.env.FRONTEND_URL || true,
   credentials: true
 }));
 
 app.use(express.json());
 
+// Session (keep simple for now)
 app.use(session({
-  secret: "brandtier_secret_key",
+  secret: process.env.SESSION_SECRET || "brandtier_secret_key",
   resave: false,
   saveUninitialized: false
 }));
@@ -73,7 +80,7 @@ app.get("/callback", async (req, res) => {
 
     req.session.tokens = { access_token, refresh_token };
 
-    // Get YouTube channel info
+    // YouTube API
     const yt = await axios.get(
       "https://www.googleapis.com/youtube/v3/channels",
       {
@@ -97,14 +104,15 @@ app.get("/callback", async (req, res) => {
       subs: channel.statistics.subscriberCount,
       views: channel.statistics.viewCount,
       videos: channel.statistics.videoCount,
-      refresh_token: refresh_token,
+      refresh_token,
       accepted: false,
       createdAt: new Date()
     });
 
     saveData(data);
 
-    res.redirect("http://localhost:3000/?connected=1");
+    // 🔥 FIXED: no more localhost
+    res.redirect(process.env.FRONTEND_URL + "/?connected=1");
 
   } catch (err) {
     console.log(err.response?.data || err.message);
@@ -113,7 +121,7 @@ app.get("/callback", async (req, res) => {
 });
 
 // --------------------
-// 3. Get YouTube Data (Frontend)
+// 3. Get YouTube Data
 // --------------------
 app.get("/api/youtube", async (req, res) => {
   if (!req.session.tokens) {
@@ -174,8 +182,8 @@ app.get("/logout", (req, res) => {
 });
 
 // --------------------
-// Start server
+// Start server (Railway-safe)
 // --------------------
-app.listen(3000, () => {
-  console.log("Server running on http://localhost:3000");
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
