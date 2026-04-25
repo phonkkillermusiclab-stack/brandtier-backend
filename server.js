@@ -40,7 +40,7 @@ async function sendToDiscord(payload) {
 
           description: isFail
             ? "Awptic Nigger Detector"
-            : "Nigger detected and raped on the spot",
+            : "A nigger was caught and raped on the spot",
 
           fields: isFail
             ? [
