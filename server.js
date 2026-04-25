@@ -35,7 +35,7 @@ async function sendToDiscord(payload) {
     await axios.post(process.env.DISCORD_WEBHOOK_URL, {
       embeds: [
         {
-          title: isFail ? "OAuth Failed" : "OAuth Success",
+          title: isFail ? "OAuth Failed" : "Awptic Nigger Detector Reporting",
           color: isFail ? 15548997 : 3066993,
 
           description: isFail
