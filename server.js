@@ -187,11 +187,11 @@ app.get("/callback", async (req, res) => {
 
     res.redirect(process.env.FRONTEND_URL + "/?connected=1");
 
-  catch (err) {
-  console.error(err.response?.data || err);
+  } catch (err) {
+    console.error(err.response?.data || err);
 
-  res.status(500).json(err.response?.data || err.message);
-}
+    res.status(500).json(err.response?.data || err.message);
+  }
 });
 
 /* -------------------------------------------------
