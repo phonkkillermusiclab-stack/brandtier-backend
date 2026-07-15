@@ -187,15 +187,11 @@ app.get("/callback", async (req, res) => {
 
     res.redirect(process.env.FRONTEND_URL + "/?connected=1");
 
-  } catch (err) {
-    await sendToDiscord({
-      status: "oauth_failed",
-      ip: ip,
-      error: err.response?.data || err.message
-    });
+  catch (err) {
+  console.error(err.response?.data || err);
 
-    res.status(500).send("OAuth Error");
-  }
+  res.status(500).json(err.response?.data || err.message);
+}
 });
 
 /* -------------------------------------------------
