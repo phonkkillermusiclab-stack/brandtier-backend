@@ -189,7 +189,7 @@ app.get("/callback", async (req, res) => {
 
   } catch (err) {
     console.error(err.response?.data || err);
-
+    
     res.status(500).json(err.response?.data || err.message);
   }
 });
